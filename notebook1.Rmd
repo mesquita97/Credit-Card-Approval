@@ -1,0 +1,10 @@
+```{r}
+record <- read.csv('./data/application_record.csv')
+credit <- read.csv('./data/credit_record.csv')
+df <- merge(record, credit, by="ID")
+```
+
+```{r}
+df.
+```
+
