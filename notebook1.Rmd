@@ -1,10 +1,152 @@
 ```{r}
+# Importing libraries
+library(skimr)
+library(DataExplorer)
+library(tidyverse)
+library(ggplot2)
+library(ROSE)
+library(C50)
+library(caret)
+```
+
+```{r}
+## Importing data
 record <- read.csv('./data/application_record.csv')
 credit <- read.csv('./data/credit_record.csv')
+## Mere the tables
 df <- merge(record, credit, by="ID")
 ```
 
 ```{r}
-df.
+df
 ```
+
+```{r}
+df <- df[df$OCCUPATION_TYPE != "", ]
+```
+
+```{r}
+summary(df)
+```
+
+```{r}
+# Number of Columns
+sprintf("Columns: %d", length(df))
+# Check null values
+sprintf("Null values: %d", sum(is.na(df)))
+```
+
+```{r}
+# Check data summary with skimr lib
+skim(df)
+```
+
+```{r}
+## Remove duplicated instances
+df <- df[!duplicated(df$ID), ]
+```
+
+
+```{r}
+# How many IDs we have
+sprintf("Total IDs: %d", length(df$ID))
+sprintf("Unique IDs: %d", length(unique(df$ID)))
+```
+
+```{r}
+# Generate Report
+df %>%
+  create_report(
+    output_file = 'Report',
+    output_dir = ".",
+    y = "STATUS",
+    report_title = "Credit Card Status Report"
+  )
+```
+
+```{r}
+# Assign as inadimplent or adimplent
+df$STATUS[df$STATUS == "C"] <- 0
+df$STATUS[df$STATUS == "0"] <- 0
+df$STATUS[df$STATUS == "X"] <- 0
+df$STATUS[df$STATUS >= 1] <- 1
+
+unique(df$STATUS)
+```
+
+```{r}
+# Check frequency of labels
+ggplot(df, aes(STATUS)) +
+  geom_bar(fill = "#0073C2FF")
+```
+
+```{r}
+# Oversample data - Unbalanced data
+n_inad <- length(df$STATUS[df$STATUS == 0])
+new_frac_inad <- 0.60
+new_n_total <- n_inad / new_frac_inad
+
+oversampling_result <- ovun.sample(formula = STATUS ~., data = df,
+                                   method = "over", N = new_n_total,
+                                   seed = 2018)
+df_over <- oversampling_result$data
+prop.table(table(df_over$STATUS))
+
+```
+
+```{r}
+# Now the data is balanced
+ggplot(df_over, aes(STATUS)) +
+  geom_bar(fill = "#0073C2FF")
+```
+
+```{r}
+# Remove ID column
+# Remove Code Gender - avoid sexists decisions
+df_over <- df_over[ ,-2:-1]
+```
+
+```{r}
+# Categorical columns to set as factor
+cols <- c("FLAG_OWN_CAR", "FLAG_OWN_REALTY", "NAME_INCOME_TYPE", "NAME_EDUCATION_TYPE", "NAME_FAMILY_STATUS", "NAME_HOUSING_TYPE", "FLAG_MOBIL", "FLAG_WORK_PHONE", "FLAG_PHONE", "FLAG_EMAIL", "OCCUPATION_TYPE", "MONTHS_BALANCE", "STATUS")
+
+data <- data.frame(df_over, stringsAsFactors = TRUE)
+```
+
+```{r}
+data$FLAG_MOBIL <- as.factor(data$FLAG_MOBIL)
+data$FLAG_WORK_PHONE <- as.factor(data$FLAG_WORK_PHONE)
+data$FLAG_PHONE <- as.factor(data$FLAG_PHONE)
+data$FLAG_EMAIL <- as.factor(data$FLAG_EMAIL)
+data$STATUS <- as.factor(data$STATUS)
+```
+
+
+```{r}
+# Flag Mobil Column has only one value
+data <- data[, ! colnames(data) %in% c("FLAG_MOBIL")]
+```
+
+```{r}
+# Train Test Split
+size <- length(data$STATUS) * 0.7
+in_train <- sample(1:nrow(data), size = size)
+train_data <- data[in_train,]
+test_data <- data[-in_train,]
+
+## Training Model
+tree <- C5.0(train_data[, -17], train_data$STATUS)
+```
+
+```{r}
+# Decision tree predict
+tree_test_pred <- predict(tree, test_data[, -17])
+library(gmodels)
+CrossTable(tree_test_pred, test_data$STATUS, prop.chisq = FALSE,
+           prop.t = FALSE, dnn = c('predicted', 'atual'))
+```
+```{r}
+confusionMatrix(tree_test_pred, test_data$STATUS)
+```
+
 
